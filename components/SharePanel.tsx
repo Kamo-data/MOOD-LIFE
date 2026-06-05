@@ -15,6 +15,14 @@ type MoodShare = {
   viewer_id: string;
   status: string;
   created_at: string;
+  can_view_current: boolean;
+  can_view_history: boolean;
+  can_view_bladder: boolean;
+  can_view_hunger: boolean;
+  can_view_energy: boolean;
+  can_view_fun: boolean;
+  can_view_social: boolean;
+  can_view_hygiene: boolean;
 };
 
 type Profile = {
@@ -27,7 +35,29 @@ type Contact = {
   userId: string;
   displayName: string;
   relation: "owner" | "viewer";
+  share: MoodShare;
 };
+
+type PermissionKey =
+  | "can_view_current"
+  | "can_view_history"
+  | "can_view_bladder"
+  | "can_view_hunger"
+  | "can_view_energy"
+  | "can_view_fun"
+  | "can_view_social"
+  | "can_view_hygiene";
+
+const permissionLabels: { key: PermissionKey; label: string }[] = [
+  { key: "can_view_current", label: "Voir mon dernier mood" },
+  { key: "can_view_history", label: "Voir mon historique" },
+  { key: "can_view_bladder", label: "Vessie" },
+  { key: "can_view_hunger", label: "Faim" },
+  { key: "can_view_energy", label: "Énergie" },
+  { key: "can_view_fun", label: "Divertissement" },
+  { key: "can_view_social", label: "Social" },
+  { key: "can_view_hygiene", label: "Hygiène" },
+];
 
 export function SharePanel({ isDark, user }: SharePanelProps) {
   const [inviteLink, setInviteLink] = useState("");
@@ -106,6 +136,7 @@ export function SharePanel({ isDark, user }: SharePanelProps) {
         userId: contactId,
         displayName: contactProfile?.display_name ?? "Contact sans pseudo",
         relation: share.owner_id === user.id ? "viewer" : "owner",
+        share,
       } satisfies Contact;
     });
 
@@ -191,6 +222,42 @@ export function SharePanel({ isDark, user }: SharePanelProps) {
 
     setMessage("Contact supprimé.");
     await loadContacts();
+  }
+
+  async function updatePermission(
+    contact: Contact,
+    key: PermissionKey,
+    value: boolean
+  ) {
+    if (contact.relation !== "viewer") {
+      return;
+    }
+
+    const { error } = await supabase
+      .from("mood_shares")
+      .update({ [key]: value })
+      .eq("id", contact.shareId);
+
+    if (error) {
+      setMessage(`Erreur confidentialité : ${error.message}`);
+      return;
+    }
+
+    setContacts((currentContacts) =>
+      currentContacts.map((item) =>
+        item.shareId === contact.shareId
+          ? {
+              ...item,
+              share: {
+                ...item.share,
+                [key]: value,
+              },
+            }
+          : item
+      )
+    );
+
+    setMessage("Préférences de partage mises à jour.");
   }
 
   return (
@@ -336,7 +403,9 @@ export function SharePanel({ isDark, user }: SharePanelProps) {
         {isLoadingContacts ? (
           <p
             className={
-              isDark ? "mt-2 text-sm text-slate-300" : "mt-2 text-sm text-slate-600"
+              isDark
+                ? "mt-2 text-sm text-slate-300"
+                : "mt-2 text-sm text-slate-600"
             }
           >
             Chargement des contacts...
@@ -352,7 +421,7 @@ export function SharePanel({ isDark, user }: SharePanelProps) {
             Aucun contact pour le moment.
           </div>
         ) : (
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="mt-3 grid gap-3">
             {contacts.map((contact) => (
               <div
                 key={contact.shareId}
@@ -362,7 +431,7 @@ export function SharePanel({ isDark, user }: SharePanelProps) {
                     : "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                 }
               >
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <p
                       className={
@@ -382,7 +451,7 @@ export function SharePanel({ isDark, user }: SharePanelProps) {
                       }
                     >
                       {contact.relation === "viewer"
-                        ? "Cette personne peut voir tes moods."
+                        ? "Cette personne peut voir ce que tu autorises."
                         : "Cette personne partage ses moods avec toi."}
                     </p>
                   </div>
@@ -391,13 +460,71 @@ export function SharePanel({ isDark, user }: SharePanelProps) {
                     onClick={() => removeContact(contact)}
                     className={
                       isDark
-                        ? "rounded-full border border-white/10 px-3 py-1 text-xs font-bold text-slate-300 transition hover:bg-white/10"
-                        : "rounded-full border border-slate-200 px-3 py-1 text-xs font-bold text-slate-600 transition hover:bg-slate-100"
+                        ? "w-fit rounded-full border border-white/10 px-3 py-1 text-xs font-bold text-slate-300 transition hover:bg-white/10"
+                        : "w-fit rounded-full border border-slate-200 px-3 py-1 text-xs font-bold text-slate-600 transition hover:bg-slate-100"
                     }
                   >
                     Retirer
                   </button>
                 </div>
+
+                {contact.relation === "viewer" ? (
+                  <div
+                    className={
+                      isDark
+                        ? "mt-4 rounded-2xl bg-slate-950/40 p-4"
+                        : "mt-4 rounded-2xl bg-slate-50 p-4"
+                    }
+                  >
+                    <p
+                      className={
+                        isDark
+                          ? "text-sm font-black text-white"
+                          : "text-sm font-black text-slate-900"
+                      }
+                    >
+                      Confidentialité pour ce contact
+                    </p>
+
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {permissionLabels.map((permission) => (
+                        <label
+                          key={permission.key}
+                          className={
+                            isDark
+                              ? "flex items-center gap-3 rounded-xl bg-white/5 p-3 text-sm font-bold text-slate-200"
+                              : "flex items-center gap-3 rounded-xl bg-white p-3 text-sm font-bold text-slate-700"
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            checked={contact.share[permission.key]}
+                            onChange={(event) =>
+                              updatePermission(
+                                contact,
+                                permission.key,
+                                event.target.checked
+                              )
+                            }
+                            className="h-5 w-5 accent-pink-500"
+                          />
+
+                          {permission.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={
+                      isDark
+                        ? "mt-4 rounded-2xl bg-slate-950/40 p-4 text-sm text-slate-300"
+                        : "mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600"
+                    }
+                  >
+                    Ce contact contrôle lui-même ce qu’il partage avec toi.
+                  </div>
+                )}
               </div>
             ))}
           </div>

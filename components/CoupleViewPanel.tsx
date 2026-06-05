@@ -7,75 +7,77 @@ import { supabase } from "../lib/supabase";
 type CoupleViewPanelProps = {
   isDark: boolean;
   user: User;
-  currentNeeds: Need[];
+  currentNeeds: OwnNeed[];
   currentDisplayName: string;
 };
 
-type Need = {
+type OwnNeed = {
   id: string;
   label: string;
   icon: string;
   value: number;
 };
 
-type MoodShare = {
+type SharedNeed = {
   id: string;
+  label: string;
+  icon: string;
+  value: number | null;
+};
+
+type SharedMoodRow = {
   owner_id: string;
-  viewer_id: string;
-  status: string;
+  owner_display_name: string | null;
+  entry_id: string | null;
+  created_at: string | null;
+  bladder: number | null;
+  hunger: number | null;
+  energy: number | null;
+  fun: number | null;
+  social: number | null;
+  hygiene: number | null;
 };
 
-type Profile = {
-  id: string;
-  display_name: string;
-};
-
-type MoodEntryRow = {
-  id: string;
-  user_id: string;
-  created_at: string;
-  bladder: number;
-  hunger: number;
-  energy: number;
-  fun: number;
-  social: number;
-  hygiene: number;
-};
-
-type SharedContact = {
-  id: string;
-  displayName: string;
-  latestEntry: MoodEntryRow | null;
-};
-
-const defaultNeeds: Need[] = [
-  { id: "bladder", label: "Vessie", icon: "🚽", value: 85 },
-  { id: "hunger", label: "Faim", icon: "🍽️", value: 45 },
-  { id: "energy", label: "Énergie", icon: "💤", value: 50 },
-  { id: "fun", label: "Divertissement", icon: "🎮", value: 75 },
-  { id: "social", label: "Social", icon: "💬", value: 70 },
-  { id: "hygiene", label: "Hygiène", icon: "🧼", value: 80 },
+const defaultNeeds: SharedNeed[] = [
+  { id: "bladder", label: "Vessie", icon: "🚽", value: null },
+  { id: "hunger", label: "Faim", icon: "🍽️", value: null },
+  { id: "energy", label: "Énergie", icon: "💤", value: null },
+  { id: "fun", label: "Divertissement", icon: "🎮", value: null },
+  { id: "social", label: "Social", icon: "💬", value: null },
+  { id: "hygiene", label: "Hygiène", icon: "🧼", value: null },
 ];
 
-function rowToNeeds(row: MoodEntryRow): Need[] {
+function rowToNeeds(row: SharedMoodRow): SharedNeed[] {
   return defaultNeeds.map((need) => ({
     ...need,
     value: row[
       need.id as keyof Pick<
-        MoodEntryRow,
+        SharedMoodRow,
         "bladder" | "hunger" | "energy" | "fun" | "social" | "hygiene"
       >
-    ] as number,
+    ] as number | null,
   }));
 }
 
-function getAverage(needs: Need[]) {
-  const total = needs.reduce((sum, need) => sum + need.value, 0);
-  return Math.round(total / needs.length);
+function getAverage(needs: Array<OwnNeed | SharedNeed>) {
+  const visibleNeeds = needs.filter((need) => need.value !== null);
+
+  if (visibleNeeds.length === 0) {
+    return null;
+  }
+
+  const total = visibleNeeds.reduce((sum, need) => sum + (need.value ?? 0), 0);
+  return Math.round(total / visibleNeeds.length);
 }
 
-function getLowestNeed(needs: Need[]) {
-  return [...needs].sort((a, b) => a.value - b.value)[0];
+function getLowestNeed(needs: Array<OwnNeed | SharedNeed>) {
+  const visibleNeeds = needs.filter((need) => need.value !== null);
+
+  if (visibleNeeds.length === 0) {
+    return null;
+  }
+
+  return [...visibleNeeds].sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0];
 }
 
 function formatDateTime(timestamp: string) {
@@ -93,87 +95,36 @@ export function CoupleViewPanel({
   currentNeeds,
   currentDisplayName,
 }: CoupleViewPanelProps) {
-  const [contacts, setContacts] = useState<SharedContact[]>([]);
+  const [contacts, setContacts] = useState<SharedMoodRow[]>([]);
   const [selectedContactId, setSelectedContactId] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const selectedContact =
-    contacts.find((contact) => contact.id === selectedContactId) ?? null;
+    contacts.find((contact) => contact.owner_id === selectedContactId) ?? null;
 
   useEffect(() => {
     loadContactsWhoShareWithMe();
-  }, []);
+  }, [user.id]);
 
   async function loadContactsWhoShareWithMe() {
     setIsLoading(true);
     setMessage("");
 
-    const { data: shares, error: sharesError } = await supabase
-      .from("mood_shares")
-      .select("*")
-      .eq("viewer_id", user.id)
-      .eq("status", "accepted");
+    const { data, error } = await supabase.rpc("get_shared_latest_moods");
 
-    if (sharesError) {
-      setMessage(`Erreur partages : ${sharesError.message}`);
+    if (error) {
+      setMessage(`Erreur moods partagés : ${error.message}`);
       setIsLoading(false);
       return;
     }
 
-    const moodShares = (shares ?? []) as MoodShare[];
-    const ownerIds = moodShares.map((share) => share.owner_id);
-
-    if (ownerIds.length === 0) {
-      setContacts([]);
-      setSelectedContactId("");
-      setIsLoading(false);
-      return;
-    }
-
-    const { data: profiles, error: profilesError } = await supabase
-      .from("profiles")
-      .select("id, display_name")
-      .in("id", ownerIds);
-
-    if (profilesError) {
-      setMessage(`Erreur profils : ${profilesError.message}`);
-      setIsLoading(false);
-      return;
-    }
-
-    const { data: entries, error: entriesError } = await supabase
-      .from("mood_entries")
-      .select("*")
-      .in("user_id", ownerIds)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (entriesError) {
-      setMessage(`Erreur moods : ${entriesError.message}`);
-      setIsLoading(false);
-      return;
-    }
-
-    const profileList = (profiles ?? []) as Profile[];
-    const entryList = (entries ?? []) as MoodEntryRow[];
-
-    const nextContacts = ownerIds.map((ownerId) => {
-      const profile = profileList.find((item) => item.id === ownerId);
-      const latestEntry =
-        entryList.find((entry) => entry.user_id === ownerId) ?? null;
-
-      return {
-        id: ownerId,
-        displayName: profile?.display_name ?? "Contact sans pseudo",
-        latestEntry,
-      };
-    });
+    const nextContacts = (data ?? []) as SharedMoodRow[];
 
     setContacts(nextContacts);
 
     if (!selectedContactId && nextContacts.length > 0) {
-      setSelectedContactId(nextContacts[0].id);
+      setSelectedContactId(nextContacts[0].owner_id);
     }
 
     setIsLoading(false);
@@ -204,8 +155,8 @@ export function CoupleViewPanel({
                 : "mt-1 text-sm text-slate-600"
             }
           >
-            Compare tes besoins actuels avec le dernier mood partagé par un
-            contact.
+            Compare tes besoins actuels avec les jauges que ton contact a choisi
+            de partager.
           </p>
         </div>
 
@@ -256,8 +207,8 @@ export function CoupleViewPanel({
             }
           >
             {contacts.map((contact) => (
-              <option key={contact.id} value={contact.id}>
-                {contact.displayName}
+              <option key={contact.owner_id} value={contact.owner_id}>
+                {contact.owner_display_name ?? "Contact sans pseudo"}
               </option>
             ))}
           </select>
@@ -284,7 +235,7 @@ export function CoupleViewPanel({
         >
           Aucun contact ne partage encore ses moods avec toi.
         </div>
-      ) : selectedContact?.latestEntry ? (
+      ) : selectedContact?.entry_id && selectedContact.created_at ? (
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <MoodCard
             isDark={isDark}
@@ -295,11 +246,11 @@ export function CoupleViewPanel({
 
           <MoodCard
             isDark={isDark}
-            title={selectedContact.displayName}
+            title={selectedContact.owner_display_name ?? "Contact sans pseudo"}
             subtitle={`Dernier mood · ${formatDateTime(
-              selectedContact.latestEntry.created_at
+              selectedContact.created_at
             )}`}
-            needs={rowToNeeds(selectedContact.latestEntry)}
+            needs={rowToNeeds(selectedContact)}
           />
         </div>
       ) : (
@@ -325,7 +276,7 @@ export function CoupleViewPanel({
                   : "text-lg font-black text-slate-900"
               }
             >
-              👤 {selectedContact?.displayName}
+              👤 {selectedContact?.owner_display_name ?? "Contact sans pseudo"}
             </h3>
 
             <p className="mt-3">
@@ -347,7 +298,7 @@ function MoodCard({
   isDark: boolean;
   title: string;
   subtitle: string;
-  needs: Need[];
+  needs: Array<OwnNeed | SharedNeed>;
 }) {
   const average = getAverage(needs);
   const lowestNeed = getLowestNeed(needs);
@@ -374,7 +325,9 @@ function MoodCard({
 
           <p
             className={
-              isDark ? "mt-1 text-sm text-slate-300" : "mt-1 text-sm text-slate-600"
+              isDark
+                ? "mt-1 text-sm text-slate-300"
+                : "mt-1 text-sm text-slate-600"
             }
           >
             {subtitle}
@@ -382,7 +335,7 @@ function MoodCard({
         </div>
 
         <div className="w-fit rounded-full bg-pink-500 px-4 py-2 text-sm font-black text-white">
-          {average}%
+          {average === null ? "Masqué" : `${average}%`}
         </div>
       </div>
 
@@ -393,7 +346,9 @@ function MoodCard({
       >
         Plus bas :{" "}
         <span className="font-black text-pink-500">
-          {lowestNeed.icon} {lowestNeed.label} {lowestNeed.value}%
+          {lowestNeed
+            ? `${lowestNeed.icon} ${lowestNeed.label} ${lowestNeed.value}%`
+            : "masqué"}
         </span>
       </p>
 
@@ -418,7 +373,9 @@ function MoodCard({
                 {need.icon} {need.label}
               </span>
 
-              <span className="font-black text-pink-500">{need.value}%</span>
+              <span className="font-black text-pink-500">
+                {need.value === null ? "Masqué" : `${need.value}%`}
+              </span>
             </div>
 
             <div
@@ -428,10 +385,12 @@ function MoodCard({
                   : "mt-2 h-2 overflow-hidden rounded-full bg-slate-200"
               }
             >
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-red-400 via-yellow-300 to-green-400"
-                style={{ width: `${need.value}%` }}
-              />
+              {need.value !== null && (
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-red-400 via-yellow-300 to-green-400"
+                  style={{ width: `${need.value}%` }}
+                />
+              )}
             </div>
           </div>
         ))}

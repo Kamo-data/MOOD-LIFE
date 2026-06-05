@@ -13,67 +13,62 @@ type Need = {
   id: string;
   label: string;
   icon: string;
-  value: number;
+  value: number | null;
 };
 
-type MoodShare = {
-  id: string;
+type SharedMoodRow = {
   owner_id: string;
-  viewer_id: string;
-  status: string;
-};
-
-type Profile = {
-  id: string;
-  display_name: string;
-};
-
-type MoodEntryRow = {
-  id: string;
-  user_id: string;
-  created_at: string;
-  bladder: number;
-  hunger: number;
-  energy: number;
-  fun: number;
-  social: number;
-  hygiene: number;
-};
-
-type SharedMood = {
-  ownerId: string;
-  displayName: string;
-  latestEntry: MoodEntryRow | null;
+  owner_display_name: string | null;
+  entry_id: string | null;
+  created_at: string | null;
+  bladder: number | null;
+  hunger: number | null;
+  energy: number | null;
+  fun: number | null;
+  social: number | null;
+  hygiene: number | null;
 };
 
 const defaultNeeds: Need[] = [
-  { id: "bladder", label: "Vessie", icon: "🚽", value: 85 },
-  { id: "hunger", label: "Faim", icon: "🍽️", value: 45 },
-  { id: "energy", label: "Énergie", icon: "💤", value: 50 },
-  { id: "fun", label: "Divertissement", icon: "🎮", value: 75 },
-  { id: "social", label: "Social", icon: "💬", value: 70 },
-  { id: "hygiene", label: "Hygiène", icon: "🧼", value: 80 },
+  { id: "bladder", label: "Vessie", icon: "🚽", value: null },
+  { id: "hunger", label: "Faim", icon: "🍽️", value: null },
+  { id: "energy", label: "Énergie", icon: "💤", value: null },
+  { id: "fun", label: "Divertissement", icon: "🎮", value: null },
+  { id: "social", label: "Social", icon: "💬", value: null },
+  { id: "hygiene", label: "Hygiène", icon: "🧼", value: null },
 ];
 
-function rowToNeeds(row: MoodEntryRow): Need[] {
+function rowToNeeds(row: SharedMoodRow): Need[] {
   return defaultNeeds.map((need) => ({
     ...need,
     value: row[
       need.id as keyof Pick<
-        MoodEntryRow,
+        SharedMoodRow,
         "bladder" | "hunger" | "energy" | "fun" | "social" | "hygiene"
       >
-    ] as number,
+    ] as number | null,
   }));
 }
 
 function getAverage(needs: Need[]) {
-  const total = needs.reduce((sum, need) => sum + need.value, 0);
-  return Math.round(total / needs.length);
+  const visibleNeeds = needs.filter((need) => need.value !== null);
+
+  if (visibleNeeds.length === 0) {
+    return null;
+  }
+
+  const total = visibleNeeds.reduce((sum, need) => sum + (need.value ?? 0), 0);
+  return Math.round(total / visibleNeeds.length);
 }
 
 function getLowestNeed(needs: Need[]) {
-  return [...needs].sort((a, b) => a.value - b.value)[0];
+  const visibleNeeds = needs.filter((need) => need.value !== null);
+
+  if (visibleNeeds.length === 0) {
+    return null;
+  }
+
+  return [...visibleNeeds].sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0];
 }
 
 function formatDateTime(timestamp: string) {
@@ -87,79 +82,27 @@ function formatDateTime(timestamp: string) {
 }
 
 export function SharedMoodsPanel({ isDark, user }: SharedMoodsPanelProps) {
-  const [sharedMoods, setSharedMoods] = useState<SharedMood[]>([]);
+  const [sharedMoods, setSharedMoods] = useState<SharedMoodRow[]>([]);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     loadSharedMoods();
-  }, []);
+  }, [user.id]);
 
   async function loadSharedMoods() {
     setIsLoading(true);
     setMessage("");
 
-    const { data: shares, error: sharesError } = await supabase
-      .from("mood_shares")
-      .select("*")
-      .eq("viewer_id", user.id)
-      .eq("status", "accepted");
+    const { data, error } = await supabase.rpc("get_shared_latest_moods");
 
-    if (sharesError) {
-      setMessage(`Erreur partages : ${sharesError.message}`);
+    if (error) {
+      setMessage(`Erreur moods partagés : ${error.message}`);
       setIsLoading(false);
       return;
     }
 
-    const moodShares = (shares ?? []) as MoodShare[];
-    const ownerIds = moodShares.map((share) => share.owner_id);
-
-    if (ownerIds.length === 0) {
-      setSharedMoods([]);
-      setIsLoading(false);
-      return;
-    }
-
-    const { data: profiles, error: profilesError } = await supabase
-      .from("profiles")
-      .select("id, display_name")
-      .in("id", ownerIds);
-
-    if (profilesError) {
-      setMessage(`Erreur profils : ${profilesError.message}`);
-      setIsLoading(false);
-      return;
-    }
-
-    const { data: entries, error: entriesError } = await supabase
-      .from("mood_entries")
-      .select("*")
-      .in("user_id", ownerIds)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (entriesError) {
-      setMessage(`Erreur moods partagés : ${entriesError.message}`);
-      setIsLoading(false);
-      return;
-    }
-
-    const profileList = (profiles ?? []) as Profile[];
-    const entryList = (entries ?? []) as MoodEntryRow[];
-
-    const nextSharedMoods = ownerIds.map((ownerId) => {
-      const profile = profileList.find((item) => item.id === ownerId);
-      const latestEntry =
-        entryList.find((entry) => entry.user_id === ownerId) ?? null;
-
-      return {
-        ownerId,
-        displayName: profile?.display_name ?? "Contact sans pseudo",
-        latestEntry,
-      };
-    });
-
-    setSharedMoods(nextSharedMoods);
+    setSharedMoods((data ?? []) as SharedMoodRow[]);
     setIsLoading(false);
   }
 
@@ -188,7 +131,8 @@ export function SharedMoodsPanel({ isDark, user }: SharedMoodsPanelProps) {
                 : "mt-1 text-sm text-slate-600"
             }
           >
-            Ici apparaissent les contacts qui t’autorisent à voir leurs moods.
+            Ici apparaissent uniquement les jauges que tes contacts ont choisi
+            de partager.
           </p>
         </div>
 
@@ -240,10 +184,10 @@ export function SharedMoodsPanel({ isDark, user }: SharedMoodsPanelProps) {
       ) : (
         <div className="mt-5 grid gap-4">
           {sharedMoods.map((sharedMood) => {
-            if (!sharedMood.latestEntry) {
+            if (!sharedMood.entry_id || !sharedMood.created_at) {
               return (
                 <article
-                  key={sharedMood.ownerId}
+                  key={sharedMood.owner_id}
                   className={
                     isDark
                       ? "rounded-3xl border border-white/10 bg-white/10 p-4"
@@ -257,7 +201,7 @@ export function SharedMoodsPanel({ isDark, user }: SharedMoodsPanelProps) {
                         : "text-lg font-black text-slate-900"
                     }
                   >
-                    👤 {sharedMood.displayName}
+                    👤 {sharedMood.owner_display_name ?? "Contact sans pseudo"}
                   </h3>
 
                   <p
@@ -273,13 +217,13 @@ export function SharedMoodsPanel({ isDark, user }: SharedMoodsPanelProps) {
               );
             }
 
-            const needs = rowToNeeds(sharedMood.latestEntry);
+            const needs = rowToNeeds(sharedMood);
             const average = getAverage(needs);
             const lowestNeed = getLowestNeed(needs);
 
             return (
               <article
-                key={sharedMood.ownerId}
+                key={sharedMood.owner_id}
                 className={
                   isDark
                     ? "rounded-3xl border border-white/10 bg-white/10 p-4"
@@ -295,7 +239,7 @@ export function SharedMoodsPanel({ isDark, user }: SharedMoodsPanelProps) {
                           : "text-lg font-black text-slate-900"
                       }
                     >
-                      👤 {sharedMood.displayName}
+                      👤 {sharedMood.owner_display_name ?? "Contact sans pseudo"}
                     </h3>
 
                     <p
@@ -306,14 +250,12 @@ export function SharedMoodsPanel({ isDark, user }: SharedMoodsPanelProps) {
                       }
                     >
                       Dernier mood :{" "}
-                      <strong>
-                        {formatDateTime(sharedMood.latestEntry.created_at)}
-                      </strong>
+                      <strong>{formatDateTime(sharedMood.created_at)}</strong>
                     </p>
                   </div>
 
                   <div className="w-fit rounded-full bg-pink-500 px-4 py-2 text-sm font-black text-white">
-                    Moyenne {average}%
+                    {average === null ? "Masqué" : `Moyenne ${average}%`}
                   </div>
                 </div>
 
@@ -326,7 +268,9 @@ export function SharedMoodsPanel({ isDark, user }: SharedMoodsPanelProps) {
                 >
                   Besoin le plus bas :{" "}
                   <span className="font-black text-pink-500">
-                    {lowestNeed.icon} {lowestNeed.label} {lowestNeed.value}%
+                    {lowestNeed
+                      ? `${lowestNeed.icon} ${lowestNeed.label} ${lowestNeed.value}%`
+                      : "masqué"}
                   </span>
                 </p>
 
@@ -351,7 +295,7 @@ export function SharedMoodsPanel({ isDark, user }: SharedMoodsPanelProps) {
                         {need.label}
                       </div>
                       <div className="text-lg font-black text-pink-500">
-                        {need.value}%
+                        {need.value === null ? "Masqué" : `${need.value}%`}
                       </div>
                     </div>
                   ))}
