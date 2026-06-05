@@ -4,11 +4,10 @@ import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { AuthPanel } from "../components/AuthPanel";
-import { ProfilePanel } from "../components/ProfilePanel";
 import { SharePanel } from "../components/SharePanel";
 import { SharedMoodsPanel } from "../components/SharedMoodsPanel";
 import { CoupleViewPanel } from "../components/CoupleViewPanel";
-import { InstallAppButton } from "../components/InstallAppButton";
+import { SettingsPanel } from "../components/SettingsPanel";
 
 type Need = {
   id: string;
@@ -19,7 +18,7 @@ type Need = {
 
 type Theme = "light" | "dark";
 
-type Tab = "needs" | "duo" | "share" | "history";
+type Tab = "needs" | "duo" | "share" | "history" | "settings";
 
 type Profile = {
   id: string;
@@ -380,11 +379,13 @@ export default function Home() {
 
       if (data) {
         const row = data as MoodEntryRow;
+
         addChangeToHistory({
           id: row.id,
           timestamp: row.created_at,
           needs: rowToNeeds(row),
         });
+
         setSaveMessage(`Enregistré en ligne à ${formatTime(row.created_at)}`);
       }
     } else {
@@ -393,6 +394,7 @@ export default function Home() {
         timestamp,
         needs,
       });
+
       setSaveMessage(`Enregistré localement à ${formatTime(timestamp)}`);
     }
 
@@ -561,20 +563,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 md:w-48 md:items-end">
-              <InstallAppButton isDark={isDark} />
-
-              <button
-                onClick={toggleTheme}
-                className={
-                  isDark
-                    ? "rounded-full bg-white px-5 py-3 font-bold text-slate-950 shadow-lg transition hover:scale-105"
-                    : "rounded-full bg-slate-900 px-5 py-3 font-bold text-white shadow-lg transition hover:scale-105"
-                }
-              >
-                {isDark ? "☀️ Mode clair" : "🌙 Mode sombre"}
-              </button>
-            </div>
+            <div className="hidden md:block md:w-40" />
           </div>
         </header>
 
@@ -588,71 +577,8 @@ export default function Home() {
           >
             Vérification de la connexion...
           </section>
-        ) : user ? (
-          <section
-            className={
-              isDark
-                ? "rounded-[2rem] border border-emerald-300/20 bg-emerald-400/10 p-5 shadow-2xl backdrop-blur"
-                : "rounded-[2rem] border border-emerald-200 bg-emerald-50/90 p-5 shadow-xl backdrop-blur"
-            }
-          >
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2
-                  className={
-                    isDark
-                      ? "text-xl font-bold text-emerald-100"
-                      : "text-xl font-bold text-emerald-800"
-                  }
-                >
-                  Connecté
-                </h2>
-
-                <p
-                  className={
-                    isDark
-                      ? "mt-1 text-sm text-emerald-100/80"
-                      : "mt-1 text-sm text-emerald-700"
-                  }
-                >
-                  Compte actif :{" "}
-                  <strong>{profile?.display_name ?? "Pseudo non défini"}</strong>
-                </p>
-
-                <p
-                  className={
-                    isDark
-                      ? "mt-1 text-xs text-emerald-100/60"
-                      : "mt-1 text-xs text-emerald-700/80"
-                  }
-                >
-                  Ton email sert uniquement à te connecter. Il ne sera pas
-                  affiché aux autres utilisateurs.
-                </p>
-              </div>
-
-              <button
-                onClick={logout}
-                className={
-                  isDark
-                    ? "rounded-full bg-white px-5 py-3 font-bold text-slate-950 shadow-lg transition hover:scale-105"
-                    : "rounded-full bg-slate-900 px-5 py-3 font-bold text-white shadow-lg transition hover:scale-105"
-                }
-              >
-                Se déconnecter
-              </button>
-            </div>
-          </section>
-        ) : (
+        ) : user ? null : (
           <AuthPanel isDark={isDark} onAuthSuccess={setUser} />
-        )}
-
-        {user && (
-          <ProfilePanel
-            isDark={isDark}
-            displayName={profile?.display_name ?? ""}
-            onSave={saveProfile}
-          />
         )}
 
         {user && (
@@ -663,13 +589,25 @@ export default function Home() {
                 : "sticky top-3 z-30 rounded-[2rem] border border-white/70 bg-white/80 p-3 shadow-xl backdrop-blur"
             }
           >
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
               {renderTabButton("needs", "Besoins", "❤️")}
               {renderTabButton("duo", "Duo", "👥")}
               {renderTabButton("share", "Partage", "🔗")}
               {renderTabButton("history", "Historique", "🕒")}
+              {renderTabButton("settings", "Réglages", "⚙️")}
             </div>
           </nav>
+        )}
+
+        {user && activeTab === "settings" && (
+          <SettingsPanel
+            isDark={isDark}
+            user={user}
+            displayName={profile?.display_name ?? ""}
+            onSaveProfile={saveProfile}
+            onToggleTheme={toggleTheme}
+            onLogout={logout}
+          />
         )}
 
         {user && activeTab === "share" && (
@@ -713,7 +651,9 @@ export default function Home() {
               <div>
                 <h2
                   className={
-                    isDark ? "text-xl font-bold text-white" : "text-xl font-bold"
+                    isDark
+                      ? "text-xl font-bold text-white"
+                      : "text-xl font-bold"
                   }
                 >
                   Résumé
@@ -806,7 +746,9 @@ export default function Home() {
               <div>
                 <h2
                   className={
-                    isDark ? "text-xl font-bold text-white" : "text-xl font-bold"
+                    isDark
+                      ? "text-xl font-bold text-white"
+                      : "text-xl font-bold"
                   }
                 >
                   Historique
@@ -1021,7 +963,8 @@ export default function Home() {
               isDark ? "text-sm text-slate-400" : "text-sm text-slate-500"
             }
           >
-            Prochaine étape : application installable sur téléphone.
+            Les réglages, le profil et l’installation sont maintenant dans
+            l’onglet ⚙️ Réglages.
           </p>
         </footer>
       </section>
