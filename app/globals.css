@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+:root {
+  --background: #fff7fb;
+  --foreground: #1e293b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.app-shell {
+  position: relative;
+  overflow: hidden;
+  transition: background 0.35s ease, color 0.35s ease;
+}
+
+.theme-light {
+  --slider-border: #17233c;
+  --slider-track: rgba(255, 255, 255, 0.72);
+  background:
+    radial-gradient(circle at 12% 12%, rgba(244, 114, 182, 0.38), transparent 26%),
+    radial-gradient(circle at 88% 18%, rgba(96, 165, 250, 0.34), transparent 26%),
+    radial-gradient(circle at 50% 82%, rgba(253, 224, 71, 0.28), transparent 28%),
+    radial-gradient(circle at 70% 55%, rgba(167, 243, 208, 0.22), transparent 24%),
+    linear-gradient(135deg, #ffe7f3 0%, #fff4fb 28%, #f3f0ff 60%, #e8f6ff 100%);
+  color: #17233c;
+}
+
+.theme-dark {
+  --slider-border: rgba(255, 255, 255, 0.72);
+  --slider-track: rgba(15, 23, 42, 0.78);
+  background:
+    radial-gradient(circle at 12% 12%, rgba(217, 70, 239, 0.28), transparent 24%),
+    radial-gradient(circle at 88% 18%, rgba(34, 211, 238, 0.22), transparent 24%),
+    radial-gradient(circle at 50% 82%, rgba(99, 102, 241, 0.22), transparent 28%),
+    radial-gradient(circle at 70% 55%, rgba(236, 72, 153, 0.14), transparent 24%),
+    linear-gradient(135deg, #050816 0%, #0f172a 35%, #111827 65%, #1e1b4b 100%);
+  color: #f8fafc;
+}
+
+.background-pattern {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.14;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.7) 1.2px, transparent 1.2px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black, transparent 92%);
+}
+
+.theme-dark .background-pattern {
+  display: none;
+}
+
+.mood-slider {
+  appearance: none;
+  cursor: pointer;
+  background: transparent;
+}
+
+.mood-slider::-webkit-slider-thumb {
+  appearance: none;
+  height: 32px;
+  width: 32px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mood-slider::-moz-range-thumb {
+  height: 32px;
+  width: 32px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.mood-slider::-webkit-slider-runnable-track {
+  height: 32px;
+  background: transparent;
+}
+
+.mood-slider::-moz-range-track {
+  height: 32px;
+  background: transparent;
+}
