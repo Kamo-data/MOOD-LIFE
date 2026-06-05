@@ -8,6 +8,7 @@ import { ProfilePanel } from "../components/ProfilePanel";
 import { SharePanel } from "../components/SharePanel";
 import { SharedMoodsPanel } from "../components/SharedMoodsPanel";
 import { CoupleViewPanel } from "../components/CoupleViewPanel";
+import { InstallAppButton } from "../components/InstallAppButton";
 
 type Need = {
   id: string;
@@ -560,7 +561,9 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="md:w-40 md:text-right">
+            <div className="flex flex-col gap-2 md:w-48 md:items-end">
+              <InstallAppButton isDark={isDark} />
+
               <button
                 onClick={toggleTheme}
                 className={
