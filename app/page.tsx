@@ -8,6 +8,7 @@ import { SharePanel } from "../components/SharePanel";
 import { SharedMoodsPanel } from "../components/SharedMoodsPanel";
 import { CoupleViewPanel } from "../components/CoupleViewPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
+import { HistoryChartsPanel } from "../components/HistoryChartsPanel";
 
 type Need = {
   id: string;
@@ -735,6 +736,10 @@ export default function Home() {
         )}
 
         {activeTab === "history" && (
+          <HistoryChartsPanel isDark={isDark} history={history} />
+        )}
+
+        {activeTab === "history" && (
           <section
             className={
               isDark
@@ -963,8 +968,8 @@ export default function Home() {
               isDark ? "text-sm text-slate-400" : "text-sm text-slate-500"
             }
           >
-            Les réglages, le profil et l’installation sont maintenant dans
-            l’onglet ⚙️ Réglages.
+            Les graphiques utilisent le dernier mood enregistré de chaque
+            journée.
           </p>
         </footer>
       </section>
