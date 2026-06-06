@@ -78,6 +78,12 @@ type DuoChartPoint = {
   contact: number | null;
 };
 
+type DuoMultiNeedPoint = {
+  label: string;
+  mine: Record<NeedId, number | null>;
+  contact: Record<NeedId, number | null>;
+};
+
 const needsConfig: SharedNeed[] = [
   { id: "bladder", label: "Vessie", icon: "🚽", value: null },
   { id: "hunger", label: "Faim", icon: "🍽️", value: null },
@@ -87,13 +93,28 @@ const needsConfig: SharedNeed[] = [
   { id: "hygiene", label: "Hygiène", icon: "🧼", value: null },
 ];
 
+const needColors: Record<NeedId, string> = {
+  bladder: "#38bdf8",
+  hunger: "#f97316",
+  energy: "#a855f7",
+  fun: "#ec4899",
+  social: "#22c55e",
+  hygiene: "#eab308",
+};
+
 const suggestionByNeed: Record<NeedId, string> = {
-  bladder: "Vous avez tous les deux besoin d’une petite pause. Rien de glamour, mais parfois ça sauve l’ambiance.",
-  hunger: "Vous avez tous les deux faim. Pourquoi ne pas préparer ou commander quelque chose ensemble ?",
-  energy: "Vous manquez tous les deux d’énergie. Une soirée calme, un plaid et zéro pression semblent être une bonne idée.",
-  fun: "Vous avez tous les deux besoin de divertissement. Pourquoi ne pas lancer un jeu, une série ou une activité légère ensemble ?",
-  social: "Vous avez tous les deux besoin de social. Un vrai moment de discussion, sans téléphone, pourrait vous faire du bien.",
-  hygiene: "Vous avez tous les deux besoin de confort et de fraîcheur. Une douche, un bain ou une petite routine cocooning peut relancer la soirée.",
+  bladder:
+    "Vous avez tous les deux besoin d’une petite pause. Rien de glamour, mais parfois ça sauve l’ambiance.",
+  hunger:
+    "Vous avez tous les deux faim. Pourquoi ne pas préparer ou commander quelque chose ensemble ?",
+  energy:
+    "Vous manquez tous les deux d’énergie. Une soirée calme, un plaid et zéro pression semblent être une bonne idée.",
+  fun:
+    "Vous avez tous les deux besoin de divertissement. Pourquoi ne pas lancer un jeu, une série ou une activité légère ensemble ?",
+  social:
+    "Vous avez tous les deux besoin de social. Un vrai moment de discussion, sans téléphone, pourrait vous faire du bien.",
+  hygiene:
+    "Vous avez tous les deux besoin de confort et de fraîcheur. Une douche, un bain ou une petite routine cocooning peut relancer la soirée.",
 };
 
 function getDateKey(date = new Date()) {
@@ -187,11 +208,24 @@ function buildAvailableDates(
   const dates = new Set<string>();
 
   ownHistory.forEach((day) => dates.add(day.date));
-  sharedHistory.forEach((entry) => dates.add(getDateKey(new Date(entry.created_at))));
+  sharedHistory.forEach((entry) =>
+    dates.add(getDateKey(new Date(entry.created_at)))
+  );
 
   dates.add(getDateKey());
 
   return Array.from(dates).sort((a, b) => b.localeCompare(a));
+}
+
+function createEmptyNeedMap(): Record<NeedId, number | null> {
+  return {
+    bladder: null,
+    hunger: null,
+    energy: null,
+    fun: null,
+    social: null,
+    hygiene: null,
+  };
 }
 
 function buildDuoChartPoints({
@@ -237,7 +271,69 @@ function buildDuoChartPoints({
       };
     });
 
-  return Object.values(pointsByLabel).sort((a, b) => a.label.localeCompare(b.label));
+  return Object.values(pointsByLabel).sort((a, b) =>
+    a.label.localeCompare(b.label)
+  );
+}
+
+function buildDuoMultiNeedPoints({
+  ownHistory,
+  sharedHistory,
+  selectedDate,
+}: {
+  ownHistory: OwnHistoryDay[];
+  sharedHistory: SharedHistoryRow[];
+  selectedDate: string;
+}): DuoMultiNeedPoint[] {
+  const pointsByLabel: Record<string, DuoMultiNeedPoint> = {};
+
+  const ownDay = ownHistory.find((day) => day.date === selectedDate);
+
+  if (ownDay) {
+    ownDay.changes
+      .slice()
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+      .forEach((change) => {
+        const label = formatTime(change.timestamp);
+
+        pointsByLabel[label] = pointsByLabel[label] ?? {
+          label,
+          mine: createEmptyNeedMap(),
+          contact: createEmptyNeedMap(),
+        };
+
+        needsConfig.forEach((need) => {
+          pointsByLabel[label].mine[need.id] = getOwnNeedValue(
+            change.needs,
+            need.id
+          );
+        });
+      });
+  }
+
+  sharedHistory
+    .filter((entry) => getDateKey(new Date(entry.created_at)) === selectedDate)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .forEach((entry) => {
+      const label = formatTime(entry.created_at);
+
+      pointsByLabel[label] = pointsByLabel[label] ?? {
+        label,
+        mine: createEmptyNeedMap(),
+        contact: createEmptyNeedMap(),
+      };
+
+      needsConfig.forEach((need) => {
+        pointsByLabel[label].contact[need.id] = getSharedNeedValue(
+          entry,
+          need.id
+        );
+      });
+    });
+
+  return Object.values(pointsByLabel).sort((a, b) =>
+    a.label.localeCompare(b.label)
+  );
 }
 
 function getLatestOwnChangeForDate(history: OwnHistoryDay[], selectedDate: string) {
@@ -272,7 +368,8 @@ function getSharedSuggestion(
   const commonLowNeeds = needsConfig
     .map((need) => {
       const mine = getOwnNeedValue(ownNeeds, need.id);
-      const contact = sharedNeeds.find((item) => item.id === need.id)?.value ?? null;
+      const contact =
+        sharedNeeds.find((item) => item.id === need.id)?.value ?? null;
 
       return {
         ...need,
@@ -287,7 +384,10 @@ function getSharedSuggestion(
         need.mine <= 55 &&
         need.contact <= 55
     )
-    .sort((a, b) => (a.mine ?? 0) + (a.contact ?? 0) - ((b.mine ?? 0) + (b.contact ?? 0)));
+    .sort(
+      (a, b) =>
+        (a.mine ?? 0) + (a.contact ?? 0) - ((b.mine ?? 0) + (b.contact ?? 0))
+    );
 
   const bestMatch = commonLowNeeds[0];
 
@@ -337,6 +437,16 @@ export function CoupleViewPanel({
     [history, sharedHistory, effectiveSelectedDate, selectedNeed]
   );
 
+  const multiNeedPoints = useMemo(
+    () =>
+      buildDuoMultiNeedPoints({
+        ownHistory: history,
+        sharedHistory,
+        selectedDate: effectiveSelectedDate,
+      }),
+    [history, sharedHistory, effectiveSelectedDate]
+  );
+
   const latestOwnChange = getLatestOwnChangeForDate(history, effectiveSelectedDate);
   const latestSharedEntry = getLatestSharedEntryForDate(
     sharedHistory,
@@ -345,7 +455,11 @@ export function CoupleViewPanel({
 
   const suggestion = getSharedSuggestion(
     latestOwnChange?.needs ?? currentNeeds,
-    latestSharedEntry ? rowToNeeds(latestSharedEntry) : selectedContact ? rowToNeeds(selectedContact) : null
+    latestSharedEntry
+      ? rowToNeeds(latestSharedEntry)
+      : selectedContact
+        ? rowToNeeds(selectedContact)
+        : null
   );
 
   useEffect(() => {
@@ -482,7 +596,7 @@ export function CoupleViewPanel({
                   : "text-sm font-bold text-slate-700"
               }
             >
-              Besoin
+              Besoin (graphique simple)
             </label>
 
             <select
@@ -573,6 +687,12 @@ export function CoupleViewPanel({
             isLoadingHistory={isLoadingHistory}
           />
 
+          <DuoMultiNeedChart
+            isDark={isDark}
+            points={multiNeedPoints}
+            isLoadingHistory={isLoadingHistory}
+          />
+
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <MoodCard
               isDark={isDark}
@@ -584,7 +704,9 @@ export function CoupleViewPanel({
             {selectedContact?.entry_id && selectedContact.created_at ? (
               <MoodCard
                 isDark={isDark}
-                title={selectedContact.owner_display_name ?? "Contact sans pseudo"}
+                title={
+                  selectedContact.owner_display_name ?? "Contact sans pseudo"
+                }
                 subtitle={`Dernier mood · ${formatTime(
                   selectedContact.created_at
                 )}`}
@@ -605,7 +727,8 @@ export function CoupleViewPanel({
                       : "text-lg font-black text-slate-900"
                   }
                 >
-                  👤 {selectedContact?.owner_display_name ?? "Contact sans pseudo"}
+                  👤{" "}
+                  {selectedContact?.owner_display_name ?? "Contact sans pseudo"}
                 </h3>
 
                 <p className="mt-3">
@@ -789,6 +912,251 @@ function DuoLineChart({
                   strokeWidth="2"
                 />
               )}
+
+              <text
+                x={getX(index)}
+                y={height - 8}
+                textAnchor="middle"
+                fontSize="11"
+                fill={isDark ? "#cbd5e1" : "#64748b"}
+              >
+                {point.label}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function DuoMultiNeedChart({
+  isDark,
+  points,
+  isLoadingHistory,
+}: {
+  isDark: boolean;
+  points: DuoMultiNeedPoint[];
+  isLoadingHistory: boolean;
+}) {
+  const width = 820;
+  const height = 320;
+  const paddingX = 46;
+  const paddingY = 34;
+  const chartWidth = width - paddingX * 2;
+  const chartHeight = height - paddingY * 2;
+
+  const hasAnyMine = points.some((point) =>
+    needsConfig.some((need) => point.mine[need.id] !== null)
+  );
+
+  const hasAnyContact = points.some((point) =>
+    needsConfig.some((need) => point.contact[need.id] !== null)
+  );
+
+  function getX(index: number) {
+    if (points.length === 1) {
+      return width / 2;
+    }
+
+    return paddingX + (index / (points.length - 1)) * chartWidth;
+  }
+
+  function getY(value: number) {
+    return paddingY + ((100 - value) / 100) * chartHeight;
+  }
+
+  function getPath(
+    needId: NeedId,
+    source: "mine" | "contact"
+  ) {
+    const validPoints = points
+      .map((point, index) => ({
+        point,
+        index,
+        value: point[source][needId],
+      }))
+      .filter((item) => item.value !== null);
+
+    return validPoints
+      .map((item, index) => {
+        const x = getX(item.index);
+        const y = getY(item.value ?? 0);
+
+        return index === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
+      })
+      .join(" ");
+  }
+
+  if (isLoadingHistory) {
+    return (
+      <EmptyState
+        isDark={isDark}
+        label="Chargement du graphique complet des 6 besoins..."
+      />
+    );
+  }
+
+  if (points.length === 0 || (!hasAnyMine && !hasAnyContact)) {
+    return (
+      <EmptyState
+        isDark={isDark}
+        label="Aucune donnée suffisante pour afficher la vue complète des 6 besoins."
+      />
+    );
+  }
+
+  return (
+    <div
+      className={
+        isDark
+          ? "mt-5 overflow-hidden rounded-3xl border border-white/10 bg-slate-950/45 p-4"
+          : "mt-5 overflow-hidden rounded-3xl border border-white bg-white p-4 shadow"
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span
+            className={
+              isDark
+                ? "text-sm font-black text-white"
+                : "text-sm font-black text-slate-900"
+            }
+          >
+            Vue complète des 6 besoins
+          </span>
+
+          <span
+            className={
+              isDark
+                ? "rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-slate-200"
+                : "rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700"
+            }
+          >
+            Trait plein = Moi
+          </span>
+
+          <span
+            className={
+              isDark
+                ? "rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-slate-200"
+                : "rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700"
+            }
+          >
+            Trait pointillé = Contact
+          </span>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {needsConfig.map((need) => (
+            <div
+              key={need.id}
+              className={
+                isDark
+                  ? "rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-slate-200"
+                  : "rounded-full bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"
+              }
+            >
+              <span style={{ color: needColors[need.id] }}>●</span> {need.icon}{" "}
+              {need.label}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 w-full overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="min-w-[720px]"
+          role="img"
+          aria-label="Graphique complet duo des six besoins"
+        >
+          {[0, 25, 50, 75, 100].map((level) => {
+            const y = getY(level);
+
+            return (
+              <g key={level}>
+                <line
+                  x1={paddingX}
+                  x2={width - paddingX}
+                  y1={y}
+                  y2={y}
+                  stroke={isDark ? "rgba(255,255,255,0.12)" : "#e2e8f0"}
+                  strokeWidth="1"
+                />
+                <text
+                  x={8}
+                  y={y + 4}
+                  fontSize="11"
+                  fill={isDark ? "#cbd5e1" : "#64748b"}
+                >
+                  {level}
+                </text>
+              </g>
+            );
+          })}
+
+          {needsConfig.map((need) => {
+            const minePath = getPath(need.id, "mine");
+            const contactPath = getPath(need.id, "contact");
+
+            return (
+              <g key={need.id}>
+                {minePath && (
+                  <path
+                    d={minePath}
+                    fill="none"
+                    stroke={needColors[need.id]}
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
+
+                {contactPath && (
+                  <path
+                    d={contactPath}
+                    fill="none"
+                    stroke={needColors[need.id]}
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray="8 6"
+                    opacity="0.9"
+                  />
+                )}
+              </g>
+            );
+          })}
+
+          {points.map((point, index) => (
+            <g key={`${point.label}-${index}`}>
+              {needsConfig.map((need) => (
+                <g key={need.id}>
+                  {point.mine[need.id] !== null && (
+                    <circle
+                      cx={getX(index)}
+                      cy={getY(point.mine[need.id] ?? 0)}
+                      r="4"
+                      fill={needColors[need.id]}
+                      stroke={isDark ? "#0f172a" : "#ffffff"}
+                      strokeWidth="1.5"
+                    />
+                  )}
+
+                  {point.contact[need.id] !== null && (
+                    <circle
+                      cx={getX(index)}
+                      cy={getY(point.contact[need.id] ?? 0)}
+                      r="4"
+                      fill={needColors[need.id]}
+                      stroke={isDark ? "#0f172a" : "#ffffff"}
+                      strokeWidth="1.5"
+                      opacity="0.85"
+                    />
+                  )}
+                </g>
+              ))}
 
               <text
                 x={getX(index)}
