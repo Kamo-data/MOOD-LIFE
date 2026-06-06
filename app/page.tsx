@@ -624,6 +624,7 @@ export default function Home() {
             user={user}
             currentNeeds={needs}
             currentDisplayName={profile?.display_name ?? "Moi"}
+            history={history}
           />
         )}
 
