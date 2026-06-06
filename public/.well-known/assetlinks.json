@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.vercel.mood_life.twa",
+        "sha256_cert_fingerprints": ["6E:22:90:CE:DC:03:F1:50:F6:92:6A:A2:32:18:AD:A5:B7:DE:97:1B:EA:3C:F0:43:49:C6:7A:D6:B7:A8:E9:F4"]
+      }
+    }]
